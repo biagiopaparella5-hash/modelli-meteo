@@ -59,6 +59,15 @@ def render_step(model, step, run_iso, npz, out_dir):
     return model, step, done
 
 
+def prewarm_cartopy():
+    """Scarica coste/confini una sola volta, prima dei processi paralleli (evita file corrotti)."""
+    if not style.HAS_CARTOPY:
+        return
+    import cartopy.feature as cf
+    for feat in (cf.LAND, cf.COASTLINE, cf.BORDERS):
+        list(feat.with_scale("50m").geometries())
+
+
 def synthetic(model, steps):
     """Campi finti ma realistici per provare la grafica senza rete."""
     lats = np.arange(25, 72.01, 0.25, dtype=np.float32)
@@ -131,6 +140,7 @@ def main():
             tasks.append((model, s, run.isoformat(), npz))
         del data
 
+    prewarm_cartopy()
     print(f"Disegno {len(tasks)} scadenze con {args.workers} processi…")
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = [ex.submit(render_step, *t, out_dir) for t in tasks]
