@@ -65,7 +65,8 @@ def prewarm_cartopy():
         return
     import cartopy.feature as cf
     for feat in (cf.LAND, cf.COASTLINE, cf.BORDERS):
-        list(feat.with_scale("50m").geometries())
+        for sc in ("50m", "110m"):
+            list(feat.with_scale(sc).geometries())
     list(cf.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m").geometries())
 
 
@@ -116,6 +117,8 @@ def main():
                 "maps": {k: {"label": v["label"], "short": v["short"]} for k, v in MAPS.items()},
                 "models": {}}
 
+    import time
+    t0 = time.time()
     tasks = []
     for model in args.models.split(","):
         steps = MODELS[model]["steps"]
@@ -142,6 +145,7 @@ def main():
         del data
 
     prewarm_cartopy()
+    t1 = time.time()
     print(f"Disegno {len(tasks)} scadenze con {args.workers} processi…")
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = [ex.submit(render_step, *t, out_dir) for t in tasks]
@@ -151,6 +155,7 @@ def main():
             for map_id, area_id in done:
                 maps.setdefault(map_id, {}).setdefault(area_id, []).append(step)
 
+    manifest["timing"] = {"download_min": round((t1 - t0) / 60, 1), "render_min": round((time.time() - t1) / 60, 1)}
     for m in manifest["models"].values():
         for areas in m["maps"].values():
             for a in areas:

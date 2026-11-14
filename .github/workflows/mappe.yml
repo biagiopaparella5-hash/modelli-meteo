@@ -12,13 +12,13 @@ on:
       - ".github/workflows/mappe.yml"
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
 concurrency:
-  group: mappe
-  cancel-in-progress: false
+  group: mappe-v2
+  cancel-in-progress: true
 
 jobs:
   mappe:
@@ -57,6 +57,17 @@ jobs:
           mkdir -p site/app
           cp -r android/app/src/main/assets/www/* site/app/
           echo '<meta http-equiv="refresh" content="0; url=app/">' > site/index.html
+
+      - name: Anteprima per il controllo (branch "anteprima")
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/prev && cp site/manifest.json /tmp/prev/
+          for p in gfs/nh/z500/024 gfs/eu/z500/024 gfs/am/t850/024 ecmwf/nh/t850/024 icon/it/t2m/024 icon/eu/pcp/024 ecmwf/it/z500/240; do
+            f="site/maps/$p.png"; [ -f "$f" ] && cp "$f" "/tmp/prev/$(echo $p | tr / _).png"
+          done
+          cd /tmp/prev && git init -q -b anteprima && git add -A
+          git -c user.name=modelli-meteo-bot -c user.email=bot@users.noreply.github.com commit -qm "anteprima mappe"
+          git push -fq "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" anteprima
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -84,7 +84,7 @@ def _new_map(area_id):
             ax = fig.add_axes(rect, projection=proj)
             ax.set_extent(area["extent"], crs=PC)
         ax.set_facecolor("#0e1726")
-        ax.add_feature(cfeature.LAND.with_scale("50m"), facecolor="#182235", edgecolor="none", zorder=0)
+        ax.add_feature(cfeature.LAND.with_scale("110m" if area_id == "nh" else "50m"), facecolor="#182235", edgecolor="none", zorder=0)
         ax.spines["geo"].set_edgecolor("#26324a")
     else:
         ax = fig.add_axes(rect)
@@ -103,8 +103,9 @@ def _geo(ax, area_id):
     """Coste e confini ben visibili su qualsiasi colore: linea scura con alone chiaro."""
     if not HAS_CARTOPY:
         return
-    coast = cfeature.COASTLINE.with_scale("50m")
-    borders = cfeature.BORDERS.with_scale("50m")
+    scale = "110m" if area_id == "nh" else "50m"
+    coast = cfeature.COASTLINE.with_scale(scale)
+    borders = cfeature.BORDERS.with_scale(scale)
     if area_id in ("it", "am"):
         regions = cfeature.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m", facecolor="none")
         ax.add_feature(regions, edgecolor="#ffffff", linewidth=1.0, alpha=0.35, zorder=5)
@@ -124,13 +125,29 @@ def _crop(f, area_id):
     pad_lon = 0.7 * (e[1] - e[0]) + 5
     jy = (f.lats >= e[2] - pad_lat) & (f.lats <= e[3] + pad_lat)
     if area_id == "nh":
-        lon, lat, d = f.lons, f.lats[jy], f.data[jy, :]
+        jy &= f.lats < 89.9
+        st = max(1, int(round(0.5 / _res(f.lons))))
+        lon, lat, d = f.lons[::st], f.lats[jy][::st], f.data[jy, :][::st, ::st]
         if HAS_CARTOPY and len(lon) > 1 and lon[-1] - lon[0] > 359:
             from cartopy.util import add_cyclic_point
             d, lon = add_cyclic_point(d, coord=lon)
         return lon, lat, d
     ix = (f.lons >= e[0] - pad_lon) & (f.lons <= e[1] + pad_lon)
     return f.lons[ix], f.lats[jy], f.data[np.ix_(jy, ix)]
+
+
+def _cf(ax, lon, lat, data, **kw):
+    if HAS_CARTOPY:
+        X, Y = np.meshgrid(lon, lat)
+        return ax.contourf(X, Y, data, transform=PC, transform_first=True, **kw)
+    return ax.contourf(lon, lat, data, **kw)
+
+
+def _ct(ax, lon, lat, data, **kw):
+    if HAS_CARTOPY:
+        X, Y = np.meshgrid(lon, lat)
+        return ax.contour(X, Y, data, transform=PC, transform_first=True, **kw)
+    return ax.contour(lon, lat, data, **kw)
 
 
 def _res(lons):
@@ -181,11 +198,11 @@ def _colorbar(fig, mappable, ticks=None):
 def _draw_z500(ax, fig, fl, area_id):
     lon, lat, t = _crop(fl["t850"], area_id)
     levels = np.arange(-30, 31, 2)
-    cf = ax.contourf(lon, lat, np.clip(t, -30, 30), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1, **_tr())
+    cf = _cf(ax, lon, lat, np.clip(t, -30, 30), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1)
     lon, lat, z = _crop(fl["z500"], area_id)
     z = _smooth(z, lon, 0.6)
     zl = np.arange(480, 604, 4)
-    cs = ax.contour(lon, lat, z, levels=zl, colors="#111827", linewidths=1.3, zorder=6, **_tr())
+    cs = _ct(ax, lon, lat, z, levels=zl, colors="#111827", linewidths=1.3, zorder=6)
     for c in _collections(cs):
         c.set_path_effects([pe.withStroke(linewidth=2.6, foreground="#ffffff55")])
     lbl = ax.clabel(cs, fmt="%d", fontsize=9, inline=True, inline_spacing=3)
@@ -198,13 +215,13 @@ def _draw_z500(ax, fig, fl, area_id):
 def _draw_t850(ax, fig, fl, area_id):
     lon, lat, t = _crop(fl["t850"], area_id)
     levels = np.arange(-36, 33, 2)
-    cf = ax.contourf(lon, lat, np.clip(t, -36, 32), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1, **_tr())
+    cf = _cf(ax, lon, lat, np.clip(t, -36, 32), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1)
     ts = _smooth(t, lon, 0.4)
-    cs = ax.contour(lon, lat, ts, levels=np.arange(-36, 33, 4), colors="#111827", linewidths=0.7, alpha=0.75, zorder=6, **_tr())
+    cs = _ct(ax, lon, lat, ts, levels=np.arange(-36, 33, 4), colors="#111827", linewidths=0.7, alpha=0.75, zorder=6)
     lbl = ax.clabel(cs, fmt="%d°", fontsize=8, inline=True, inline_spacing=2)
     for t_ in lbl:
         t_.set_path_effects([pe.withStroke(linewidth=2.4, foreground="#ffffffcc")]); t_.set_color("#111827")
-    ax.contour(lon, lat, ts, levels=[0], colors="#1d4ed8", linewidths=1.8, zorder=6.5, **_tr())
+    _ct(ax, lon, lat, ts, levels=[0], colors="#1d4ed8", linewidths=1.8, zorder=6.5)
     _colorbar(fig, cf, ticks=levels[::3])
     return "Temperatura a 850 hPa, circa 1500 m (°C)  ·  linea blu: isoterma 0 °C"
 
@@ -215,10 +232,10 @@ def _draw_pcp(ax, fig, fl, area_id):
         lon, lat, p = _crop(fl["tp6"], area_id)
         cmap = ListedColormap(PCP_COLORS); cmap.set_over("#ffffff")
         norm = BoundaryNorm(PCP_LEVELS, cmap.N)
-        cf = ax.contourf(lon, lat, p, levels=PCP_LEVELS, cmap=cmap, norm=norm, extend="max", alpha=0.92, zorder=2, **_tr())
+        cf = _cf(ax, lon, lat, p, levels=PCP_LEVELS, cmap=cmap, norm=norm, extend="max", alpha=0.92, zorder=2)
     lon, lat, m = _crop(fl["mslp"], area_id)
     ms = _smooth(m, lon, 0.5)
-    cs = ax.contour(lon, lat, ms, levels=np.arange(940, 1061, 4), colors="#ffffff", linewidths=0.9, alpha=0.95, zorder=6, **_tr())
+    cs = _ct(ax, lon, lat, ms, levels=np.arange(940, 1061, 4), colors="#ffffff", linewidths=0.9, alpha=0.95, zorder=6)
     lbl = ax.clabel(cs, fmt="%d", fontsize=8, inline=True, inline_spacing=2)
     for t_ in lbl:
         t_.set_path_effects(HALO); t_.set_color("#ffffff")
@@ -254,9 +271,9 @@ def _highs_lows(ax, lon, lat, m, area_id):
 def _draw_t2m(ax, fig, fl, area_id):
     lon, lat, t = _crop(fl["t2m"], area_id)
     levels = np.arange(-20, 41, 2)
-    cf = ax.contourf(lon, lat, np.clip(t, -20, 40), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1, **_tr())
-    cs = ax.contour(lon, lat, _smooth(t, lon, 0.3), levels=[0], colors="#1e3a8a", linewidths=1.0,
-                    linestyles="--", alpha=0.7, zorder=6, **_tr())
+    cf = _cf(ax, lon, lat, np.clip(t, -20, 40), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1)
+    cs = _ct(ax, lon, lat, _smooth(t, lon, 0.3), levels=[0], colors="#1e3a8a", linewidths=1.0,
+                    linestyles="--", alpha=0.7, zorder=6)
     _colorbar(fig, cf, ticks=levels[::2])
     return "Temperatura a 2 m dal suolo (°C)  ·  tratteggio: linea dello zero"
 
@@ -266,7 +283,7 @@ def _draw_vento(ax, fig, fl, area_id):
     _, _, v = _crop(fl["v10"], area_id)
     spd = np.hypot(u, v) * 3.6
     levels = np.arange(0, 131, 5)
-    cf = ax.contourf(lon, lat, np.clip(spd, 0, 130), levels=levels, cmap=CMAP_WIND, extend="max", zorder=1, **_tr())
+    cf = _cf(ax, lon, lat, np.clip(spd, 0, 130), levels=levels, cmap=CMAP_WIND, extend="max", zorder=1)
     if HAS_CARTOPY:
         ax.quiver(lon, lat, u, v, transform=PC, regrid_shape=24, color="#ffffff", alpha=0.85,
                   scale=None, width=0.0022, headwidth=4, zorder=6)
@@ -281,11 +298,11 @@ def _draw_cape(ax, fig, fl, area_id):
     lon, lat, c = _crop(fl["cape"], area_id)
     cmap = ListedColormap(CAPE_COLORS[:-1]); cmap.set_over(CAPE_COLORS[-1])
     norm = BoundaryNorm(CAPE_LEVELS, cmap.N)
-    cf = ax.contourf(lon, lat, c, levels=CAPE_LEVELS, cmap=cmap, norm=norm, extend="max", alpha=0.9, zorder=2, **_tr())
+    cf = _cf(ax, lon, lat, c, levels=CAPE_LEVELS, cmap=cmap, norm=norm, extend="max", alpha=0.9, zorder=2)
     if "mslp" in fl:
         lon, lat, m = _crop(fl["mslp"], area_id)
-        ax.contour(lon, lat, _smooth(m, lon, 0.5), levels=np.arange(940, 1061, 4), colors="#ffffff",
-                   linewidths=0.6, alpha=0.55, zorder=6, **_tr())
+        _ct(ax, lon, lat, _smooth(m, lon, 0.5), levels=np.arange(940, 1061, 4), colors="#ffffff",
+                   linewidths=0.6, alpha=0.55, zorder=6)
     _colorbar(fig, cf, ticks=CAPE_LEVELS)
     return "CAPE (J/kg): energia disponibile per i temporali  ·  linee: pressione (hPa)"
 
