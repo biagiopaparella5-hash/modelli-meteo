@@ -47,7 +47,7 @@ def render_step(model, step, run_iso, npz, out_dir):
     for map_id, spec in MAPS.items():
         if not all(n in fields for n in spec["needs"]):
             continue
-        for area_id in AREAS:
+        for area_id in spec.get("areas", AREAS):
             d = os.path.join(out_dir, "maps", model, area_id, map_id)
             os.makedirs(d, exist_ok=True)
             try:
@@ -71,8 +71,8 @@ def prewarm_cartopy():
 
 def synthetic(model, steps):
     """Campi finti ma realistici per provare la grafica senza rete."""
-    lats = np.arange(25, 72.01, 0.25, dtype=np.float32)
-    lons = np.arange(-35, 50.01, 0.25, dtype=np.float32)
+    lats = np.arange(14, 90.01, 0.5, dtype=np.float32)
+    lons = np.arange(-180, 180, 0.5, dtype=np.float32)
     X, Y = np.meshgrid(lons, lats)
     out = {}
     for s in steps:

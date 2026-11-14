@@ -34,8 +34,10 @@ svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 .seg button{flex:1;padding:9px 6px;border-radius:10px;font-weight:700;font-size:14px;color:var(--muted);transition:.2s}
 .seg button.on{color:#071022;background:var(--c,var(--accent));box-shadow:0 4px 14px color-mix(in srgb,var(--c,var(--accent)) 45%,transparent)}
 .seg button:disabled{opacity:.35}
-.seg.small{margin:0;display:inline-flex}
-.seg.small button{padding:6px 14px;font-size:13px;flex:none}
+.seg.small{margin:0;display:inline-flex;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg.small::-webkit-scrollbar{display:none}
+.seg.small button{padding:6px 12px;font-size:13px;flex:none;white-space:nowrap}
+@media (max-width:560px){.hint{display:none}}
 
 .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}

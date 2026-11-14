@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+import matplotlib.path as mpath
 from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap, ListedColormap
 from matplotlib.patches import FancyBboxPatch
 import numpy as np
@@ -66,10 +67,17 @@ def _new_map(area_id):
     rect = [0.015, 0.115, 0.97, 0.775]
     if HAS_CARTOPY:
         lon0, lat0 = area["center"]
-        proj = ccrs.LambertConformal(central_longitude=lon0, central_latitude=lat0,
-                                     standard_parallels=(lat0 - 8, lat0 + 8))
-        ax = fig.add_axes(rect, projection=proj)
-        ax.set_extent(area["extent"], crs=PC)
+        if area_id == "nh":
+            ax = fig.add_axes(rect, projection=ccrs.NorthPolarStereo(central_longitude=lon0))
+            ax.set_extent(area["extent"], crs=PC)
+            theta = np.linspace(0, 2 * np.pi, 200)
+            circle = mpath.Path(np.column_stack([np.sin(theta), np.cos(theta)]) * 0.5 + 0.5)
+            ax.set_boundary(circle, transform=ax.transAxes)
+        else:
+            proj = ccrs.LambertConformal(central_longitude=lon0, central_latitude=lat0,
+                                         standard_parallels=(lat0 - 8, lat0 + 8))
+            ax = fig.add_axes(rect, projection=proj)
+            ax.set_extent(area["extent"], crs=PC)
         ax.set_facecolor("#0e1726")
         ax.add_feature(cfeature.LAND.with_scale("50m"), facecolor="#182235", edgecolor="none", zorder=0)
         ax.spines["geo"].set_edgecolor("#26324a")
@@ -92,7 +100,7 @@ def _geo(ax, area_id):
         return
     coast = cfeature.COASTLINE.with_scale("50m")
     borders = cfeature.BORDERS.with_scale("50m")
-    if area_id == "it":
+    if area_id in ("it", "am"):
         regions = cfeature.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m", facecolor="none")
         ax.add_feature(regions, edgecolor="#ffffff", linewidth=1.0, alpha=0.35, zorder=5)
         ax.add_feature(regions, edgecolor="#0b1220", linewidth=0.45, alpha=0.7, zorder=5.05)
@@ -107,6 +115,12 @@ def _geo(ax, area_id):
 def _crop(f, area_id, pad=3.0):
     e = AREAS[area_id]["extent"]
     jy = (f.lats >= e[2] - pad) & (f.lats <= e[3] + pad)
+    if area_id == "nh":
+        lon, lat, d = f.lons, f.lats[jy], f.data[jy, :]
+        if HAS_CARTOPY and len(lon) > 1 and lon[-1] - lon[0] > 359:
+            from cartopy.util import add_cyclic_point
+            d, lon = add_cyclic_point(d, coord=lon)
+        return lon, lat, d
     ix = (f.lons >= e[0] - pad * 2) & (f.lons <= e[1] + pad * 2)
     return f.lons[ix], f.lats[jy], f.data[np.ix_(jy, ix)]
 
@@ -171,6 +185,20 @@ def _draw_z500(ax, fig, fl, area_id):
         t_.set_path_effects([pe.withStroke(linewidth=2.6, foreground="#ffffffcc")]); t_.set_color("#111827"); t_.set_fontweight("bold")
     _colorbar(fig, cf, ticks=levels[::2])
     return "Temperatura a 850 hPa (°C)  ·  linee: geopotenziale 500 hPa (dam)"
+
+
+def _draw_t850(ax, fig, fl, area_id):
+    lon, lat, t = _crop(fl["t850"], area_id)
+    levels = np.arange(-36, 33, 2)
+    cf = ax.contourf(lon, lat, np.clip(t, -36, 32), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1, **_tr())
+    ts = _smooth(t, lon, 0.4)
+    cs = ax.contour(lon, lat, ts, levels=np.arange(-36, 33, 4), colors="#111827", linewidths=0.7, alpha=0.75, zorder=6, **_tr())
+    lbl = ax.clabel(cs, fmt="%d°", fontsize=8, inline=True, inline_spacing=2)
+    for t_ in lbl:
+        t_.set_path_effects([pe.withStroke(linewidth=2.4, foreground="#ffffffcc")]); t_.set_color("#111827")
+    ax.contour(lon, lat, ts, levels=[0], colors="#1d4ed8", linewidths=1.8, zorder=6.5, **_tr())
+    _colorbar(fig, cf, ticks=levels[::3])
+    return "Temperatura a 850 hPa, circa 1500 m (°C)  ·  linea blu: isoterma 0 °C"
 
 
 def _draw_pcp(ax, fig, fl, area_id):
@@ -258,7 +286,7 @@ def _collections(cs):
     return getattr(cs, "collections", None) or [cs]
 
 
-DRAW = {"z500": _draw_z500, "pcp": _draw_pcp, "t2m": _draw_t2m, "vento": _draw_vento, "cape": _draw_cape}
+DRAW = {"z500": _draw_z500, "t850": _draw_t850, "pcp": _draw_pcp, "t2m": _draw_t2m, "vento": _draw_vento, "cape": _draw_cape}
 
 
 def render_map(fields, model, map_id, area_id, run, step, out_path):

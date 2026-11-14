@@ -5,6 +5,10 @@ on:
     # orari UTC: subito dopo l'uscita delle corse 00z/06z/12z/18z
     - cron: "20 4,10,16,22 * * *"
   workflow_dispatch:
+  push:
+    paths:
+      - "pipeline/**"
+      - ".github/workflows/mappe.yml"
 
 permissions:
   contents: read
@@ -18,7 +22,7 @@ concurrency:
 jobs:
   mappe:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 170
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}

@@ -137,7 +137,7 @@ def fetch_gfs(steps, workdir):
             "var_UGRD": "on", "var_VGRD": "on", "var_CAPE": "on",
             "lev_500_mb": "on", "lev_850_mb": "on", "lev_mean_sea_level": "on",
             "lev_surface": "on", "lev_2_m_above_ground": "on", "lev_10_m_above_ground": "on",
-            "subregion": "", "toplat": 73, "bottomlat": 24, "leftlon": -36, "rightlon": 51,
+            "subregion": "", "toplat": 90, "bottomlat": 13, "leftlon": 0, "rightlon": 360,
         }
         url = GFS_FILTER + "?" + "&".join(f"{k}={v}" for k, v in params.items())
         dest = os.path.join(workdir, f"gfs_{s:03d}.grb2")
@@ -220,9 +220,11 @@ def fetch_ecmwf(steps, workdir):
     return run, out
 
 
-# --------------------------------------------------------------------------- ICON-EU
-ICON_URL = ("https://opendata.dwd.de/weather/nwp/icon-eu/grib/{h}/{var_l}/"
-            "icon-eu_europe_regular-lat-lon_{kind}_{run}_{s:03d}_{lev}{VAR}.grib2.bz2")
+# --------------------------------------------------------------------------- ICON globale
+# ICON globale (13 km) è su griglia icosaedrica: lo riportiamo su una griglia regolare 0.25°.
+ICON_BASE = "https://opendata.dwd.de/weather/nwp/icon/grib/{h}/{var_l}/"
+ICON_FILE = "icon_global_icosahedral_{kind}_{run}_{s:03d}_{lev}{VAR}.grib2.bz2"
+ICON_CLAT = "icon_global_icosahedral_time-invariant_{run}_{VAR}.grib2.bz2"
 
 ICON_VARS = {  # nostro nome: (VAR, tipo, livello)
     "z500": ("FI", "pressure-level", 500),
@@ -238,39 +240,96 @@ ICON_VARS = {  # nostro nome: (VAR, tipo, livello)
 
 def _icon_url(run, name, s):
     var, kind, lev = ICON_VARS[name]
-    return ICON_URL.format(h=f"{run:%H}", var_l=var.lower(), kind=kind, run=f"{run:%Y%m%d%H}",
-                           s=s, lev=f"{lev}_" if lev else "", VAR=var)
+    return ICON_BASE.format(h=f"{run:%H}", var_l=var.lower()) + ICON_FILE.format(
+        kind=kind, run=f"{run:%Y%m%d%H}", s=s, lev=f"{lev}_" if lev else "", VAR=var)
+
+
+def _read_values(path):
+    """Valori del primo messaggio GRIB (griglie non regolari)."""
+    import eccodes as ec
+    with open(path, "rb") as f:
+        gid = ec.codes_grib_new_from_file(f)
+        try:
+            vals = ec.codes_get_values(gid).astype(np.float32)
+            missing = ec.codes_get(gid, "missingValue")
+            vals[vals == missing] = np.nan
+            return vals
+        finally:
+            ec.codes_release(gid)
+
+
+def _icon_download(url, workdir, tag):
+    tmp = os.path.join(workdir, tag + ".bz2")
+    dest = os.path.join(workdir, tag + ".grb2")
+    if not _get(url, tmp):
+        return None
+    with open(tmp, "rb") as fi, open(dest, "wb") as fo:
+        fo.write(bz2.decompress(fi.read()))
+    os.remove(tmp)
+    try:
+        return _read_values(dest)
+    finally:
+        os.remove(dest)
 
 
 def fetch_icon(steps, workdir):
+    from concurrent.futures import ThreadPoolExecutor
+    from scipy.spatial import cKDTree
+
     now = dt.datetime.now(UTC)
     run = None
-    for cand in _candidate_runs(now, 6, 3.0):
+    for cand in _candidate_runs(now, 12, 4.0):   # solo 00 e 12 UTC arrivano a +180h
         if _exists(_icon_url(cand, "mslp", max(steps))):
             run = cand
             break
     if run is None:
-        raise RuntimeError("Nessuna corsa ICON-EU completa trovata")
-    print(f"ICON-EU: corsa {run:%Y-%m-%d %HZ}")
+        raise RuntimeError("Nessuna corsa ICON completa trovata")
+    print(f"ICON: corsa {run:%Y-%m-%d %HZ}")
 
-    def load(name, s):
-        dest = os.path.join(workdir, f"icon_{name}_{s:03d}.grb2")
-        tmp = dest + ".bz2"
-        if not _get(_icon_url(run, name, s), tmp):
-            return None
-        with open(tmp, "rb") as fi, open(dest, "wb") as fo:
-            fo.write(bz2.decompress(fi.read()))
-        os.remove(tmp)
-        msgs = read_grib(dest)
-        os.remove(dest)
-        return msgs[0]["field"] if msgs else None
+    # coordinate dei punti della griglia icosaedrica -> indice del punto più vicino
+    coords = {}
+    for var in ("CLAT", "CLON"):
+        url = ICON_BASE.format(h=f"{run:%H}", var_l=var.lower()) + ICON_CLAT.format(run=f"{run:%Y%m%d%H}", VAR=var)
+        coords[var] = _icon_download(url, workdir, var)
+        if coords[var] is None:
+            raise RuntimeError(f"ICON: file {var} non trovato")
+    clat, clon = np.radians(coords["CLAT"].astype(np.float64)), np.radians(coords["CLON"].astype(np.float64))
+    r = REGION
+    lats = np.arange(r["lat_min"], r["lat_max"] + 0.001, 0.25, dtype=np.float32)
+    lons = np.arange(-180.0, 180.0, 0.25, dtype=np.float32)
+    keep = clat > np.radians(r["lat_min"] - 2)
+    src_idx = np.nonzero(keep)[0]
+    xyz = lambda la, lo: np.column_stack([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
+    tree = cKDTree(xyz(clat[keep], clon[keep]))
+    LA, LO = np.meshgrid(np.radians(lats.astype(np.float64)), np.radians(lons.astype(np.float64)), indexing="ij")
+    _, nn = tree.query(xyz(LA.ravel(), LO.ravel()), workers=-1)
+    index = src_idx[nn].reshape(LA.shape)
+    del tree, coords, clat, clon
+
+    def regrid(vals):
+        return Field(lats, lons, vals[index].astype(np.float32))
+
+    tot_steps = sorted(set(steps) | {s - 6 for s in steps if s >= 6})
+    jobs = [(name, s) for s in steps for name in ("z500", "t850", "mslp", "t2m", "u10", "v10", "cape")]
+    jobs += [("tot", s) for s in tot_steps]
+
+    def work(job):
+        name, s = job
+        vals = _icon_download(_icon_url(run, name, s), workdir, f"icon_{name}_{s:03d}")
+        return job, (None if vals is None else regrid(vals))
+
+    raw = {}
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for (name, s), fld in ex.map(work, jobs):
+            if fld is not None:
+                raw[(name, s)] = fld
+    print(f"  ICON: {len(raw)}/{len(jobs)} campi scaricati")
 
     out = {}
-    tot_prev = None
     for s in steps:
         f = {}
         for name in ("z500", "t850", "mslp", "t2m", "u10", "v10", "cape"):
-            fld = load(name, s)
+            fld = raw.get((name, s))
             if fld is None:
                 continue
             if name == "z500":
@@ -280,12 +339,10 @@ def fetch_icon(steps, workdir):
             elif name == "mslp":
                 fld = _scale(fld, 0.01)
             f[name] = fld
-        tot = load("tot", s)
         if s == 0 and "mslp" in f:
             f["tp6"] = _zeros_like(f["mslp"])
-        elif tot is not None and tot_prev is not None:
-            f["tp6"] = _diff(tot, tot_prev, 1.0)
-        tot_prev = tot
+        elif ("tot", s) in raw and ("tot", s - 6) in raw:
+            f["tp6"] = _diff(raw[("tot", s)], raw[("tot", s - 6)], 1.0)
         out[s] = f
     return run, out
 

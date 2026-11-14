@@ -17,8 +17,9 @@ App Android (android/)
   └─ Info: corse disponibili e fonti
 ```
 
-**Mappe:** geopotenziale 500 hPa + T 850 hPa, pressione + pioggia 6 h, temperatura 2 m, vento 10 m, CAPE (GFS e ICON).
-**Scadenze:** ogni 6 ore fino a +120h, poi ogni 12 fino a +168h (ICON fino a +120h).
+**Mappe:** geopotenziale 500 hPa + T 850 hPa, termiche 850 hPa, pressione + pioggia 6 h, temperatura 2 m, vento 10 m, CAPE (GFS e ICON).
+**Aree:** Italia, Europa, Nord America, Emisfero Nord.
+**Scadenze:** ogni 6 ore fino a +120h, poi ogni 12 ore: GFS fino a +384h, ECMWF fino a +360h, ICON (globale) fino a +180h.
 
 ## Installazione (una volta sola)
 
