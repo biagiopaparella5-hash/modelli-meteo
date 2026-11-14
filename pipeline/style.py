@@ -86,13 +86,22 @@ def _tr():
     return {"transform": PC} if HAS_CARTOPY else {}
 
 
-def _geo(ax, dark=False):
-    line = "#0b1220" if dark else "#e8eef8"
-    if HAS_CARTOPY:
-        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), edgecolor=line, linewidth=0.8 if dark else 0.7, alpha=0.85, zorder=5)
-        ax.add_feature(cfeature.BORDERS.with_scale("50m"), edgecolor=line, linewidth=0.5, alpha=0.55, zorder=5)
-        gl = ax.gridlines(draw_labels=False, linewidth=0.3, color="#ffffff", alpha=0.12, linestyle="-")
-        gl.zorder = 4
+def _geo(ax, area_id):
+    """Coste e confini ben visibili su qualsiasi colore: linea scura con alone chiaro."""
+    if not HAS_CARTOPY:
+        return
+    coast = cfeature.COASTLINE.with_scale("50m")
+    borders = cfeature.BORDERS.with_scale("50m")
+    if area_id == "it":
+        regions = cfeature.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m", facecolor="none")
+        ax.add_feature(regions, edgecolor="#ffffff", linewidth=1.0, alpha=0.35, zorder=5)
+        ax.add_feature(regions, edgecolor="#0b1220", linewidth=0.45, alpha=0.7, zorder=5.05)
+    ax.add_feature(borders, edgecolor="#ffffff", linewidth=2.0, alpha=0.5, zorder=5.1)
+    ax.add_feature(borders, edgecolor="#0b1220", linewidth=0.9, zorder=5.15)
+    ax.add_feature(coast, edgecolor="#ffffff", linewidth=2.6, alpha=0.6, zorder=5.2)
+    ax.add_feature(coast, edgecolor="#0b1220", linewidth=1.2, zorder=5.25)
+    gl = ax.gridlines(draw_labels=False, linewidth=0.3, color="#ffffff", alpha=0.12, linestyle="-")
+    gl.zorder = 4
 
 
 def _crop(f, area_id, pad=3.0):
@@ -256,7 +265,7 @@ def render_map(fields, model, map_id, area_id, run, step, out_path):
     fig, ax = _new_map(area_id)
     try:
         unit = DRAW[map_id](ax, fig, fields, area_id)
-        _geo(ax, dark=map_id in ("z500", "t2m"))
+        _geo(ax, area_id)
         _header(fig, model, map_id, run, step)
         _footer(fig, model, unit)
         buf = io.BytesIO()
