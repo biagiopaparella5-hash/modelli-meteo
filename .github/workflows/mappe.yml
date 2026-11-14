@@ -1,0 +1,61 @@
+name: Mappe meteo
+
+on:
+  schedule:
+    # orari UTC: subito dopo l'uscita delle corse 00z/06z/12z/18z
+    - cron: "20 4,10,16,22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: mappe
+  cancel-in-progress: false
+
+jobs:
+  mappe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Librerie di sistema (GRIB)
+        run: sudo apt-get update -q && sudo apt-get install -y -q libeccodes-dev
+
+      - name: Librerie Python
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Cache coste e confini (cartopy)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/cartopy
+          key: cartopy-naturalearth-v1
+
+      - name: Scarica i modelli e disegna le mappe
+        working-directory: pipeline
+        run: python render.py --out ../site
+
+      - name: Versione web dell'app
+        run: |
+          mkdir -p site/app
+          cp -r android/app/src/main/assets/www/* site/app/
+          echo '<meta http-equiv="refresh" content="0; url=app/">' > site/index.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
