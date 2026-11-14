@@ -117,16 +117,19 @@ def _geo(ax, area_id):
     gl.zorder = 4
 
 
-def _crop(f, area_id, pad=3.0):
+def _crop(f, area_id):
     e = AREAS[area_id]["extent"]
-    jy = (f.lats >= e[2] - pad) & (f.lats <= e[3] + pad)
+    # margine ampio: con la proiezione conica gli angoli della mappa escono dal rettangolo lat/lon
+    pad_lat = 0.4 * (e[3] - e[2]) + 3
+    pad_lon = 0.7 * (e[1] - e[0]) + 5
+    jy = (f.lats >= e[2] - pad_lat) & (f.lats <= e[3] + pad_lat)
     if area_id == "nh":
         lon, lat, d = f.lons, f.lats[jy], f.data[jy, :]
         if HAS_CARTOPY and len(lon) > 1 and lon[-1] - lon[0] > 359:
             from cartopy.util import add_cyclic_point
             d, lon = add_cyclic_point(d, coord=lon)
         return lon, lat, d
-    ix = (f.lons >= e[0] - pad * 2) & (f.lons <= e[1] + pad * 2)
+    ix = (f.lons >= e[0] - pad_lon) & (f.lons <= e[1] + pad_lon)
     return f.lons[ix], f.lats[jy], f.data[np.ix_(jy, ix)]
 
 
