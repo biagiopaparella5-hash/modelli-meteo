@@ -86,10 +86,11 @@ def _tr():
     return {"transform": PC} if HAS_CARTOPY else {}
 
 
-def _geo(ax):
+def _geo(ax, dark=False):
+    line = "#0b1220" if dark else "#e8eef8"
     if HAS_CARTOPY:
-        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), edgecolor="#e8eef8", linewidth=0.7, alpha=0.85, zorder=5)
-        ax.add_feature(cfeature.BORDERS.with_scale("50m"), edgecolor="#e8eef8", linewidth=0.45, alpha=0.5, zorder=5)
+        ax.add_feature(cfeature.COASTLINE.with_scale("50m"), edgecolor=line, linewidth=0.8 if dark else 0.7, alpha=0.85, zorder=5)
+        ax.add_feature(cfeature.BORDERS.with_scale("50m"), edgecolor=line, linewidth=0.5, alpha=0.55, zorder=5)
         gl = ax.gridlines(draw_labels=False, linewidth=0.3, color="#ffffff", alpha=0.12, linestyle="-")
         gl.zorder = 4
 
@@ -153,12 +154,12 @@ def _draw_z500(ax, fig, fl, area_id):
     lon, lat, z = _crop(fl["z500"], area_id)
     z = _smooth(z, lon, 0.6)
     zl = np.arange(480, 604, 4)
-    cs = ax.contour(lon, lat, z, levels=zl, colors="#ffffff", linewidths=1.1, zorder=6, **_tr())
+    cs = ax.contour(lon, lat, z, levels=zl, colors="#111827", linewidths=1.3, zorder=6, **_tr())
     for c in _collections(cs):
-        c.set_path_effects([pe.withStroke(linewidth=2.0, foreground="#0b122055")])
-    lbl = ax.clabel(cs, fmt="%d", fontsize=8.5, inline=True, inline_spacing=3)
+        c.set_path_effects([pe.withStroke(linewidth=2.6, foreground="#ffffff55")])
+    lbl = ax.clabel(cs, fmt="%d", fontsize=9, inline=True, inline_spacing=3)
     for t_ in lbl:
-        t_.set_path_effects(HALO); t_.set_color("#ffffff")
+        t_.set_path_effects([pe.withStroke(linewidth=2.6, foreground="#ffffffcc")]); t_.set_color("#111827"); t_.set_fontweight("bold")
     _colorbar(fig, cf, ticks=levels[::2])
     return "Temperatura a 850 hPa (°C)  ·  linee: geopotenziale 500 hPa (dam)"
 
@@ -209,7 +210,7 @@ def _draw_t2m(ax, fig, fl, area_id):
     lon, lat, t = _crop(fl["t2m"], area_id)
     levels = np.arange(-20, 41, 2)
     cf = ax.contourf(lon, lat, np.clip(t, -20, 40), levels=levels, cmap=CMAP_TEMP, extend="both", zorder=1, **_tr())
-    cs = ax.contour(lon, lat, _smooth(t, lon, 0.3), levels=[0], colors="#ffffff", linewidths=0.8,
+    cs = ax.contour(lon, lat, _smooth(t, lon, 0.3), levels=[0], colors="#1e3a8a", linewidths=1.0,
                     linestyles="--", alpha=0.7, zorder=6, **_tr())
     _colorbar(fig, cf, ticks=levels[::2])
     return "Temperatura a 2 m dal suolo (°C)  ·  tratteggio: linea dello zero"
@@ -255,7 +256,7 @@ def render_map(fields, model, map_id, area_id, run, step, out_path):
     fig, ax = _new_map(area_id)
     try:
         unit = DRAW[map_id](ax, fig, fields, area_id)
-        _geo(ax)
+        _geo(ax, dark=map_id in ("z500", "t2m"))
         _header(fig, model, map_id, run, step)
         _footer(fig, model, unit)
         buf = io.BytesIO()
