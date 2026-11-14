@@ -66,6 +66,7 @@ def prewarm_cartopy():
     import cartopy.feature as cf
     for feat in (cf.LAND, cf.COASTLINE, cf.BORDERS):
         list(feat.with_scale("50m").geometries())
+    list(cf.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m").geometries())
 
 
 def synthetic(model, steps):
