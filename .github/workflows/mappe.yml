@@ -8,6 +8,7 @@ on:
   push:
     paths:
       - "pipeline/**"
+      - "android/app/src/main/assets/www/**"
       - ".github/workflows/mappe.yml"
 
 permissions:

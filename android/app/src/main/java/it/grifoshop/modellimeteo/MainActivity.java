@@ -12,7 +12,9 @@ import android.view.View;
 import android.view.Window;
 import android.webkit.GeolocationPermissions;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -20,6 +22,11 @@ import android.webkit.WebViewClient;
 public class MainActivity extends Activity {
 
     private static final int REQ_LOCATION = 42;
+    // l'interfaccia viene caricata da GitHub Pages (si aggiorna senza reinstallare l'APK);
+    // senza connessione si usa la copia interna
+    private static final String REMOTE = "https://biagiopaparella5-hash.github.io/modelli-meteo/app/";
+    private static final String LOCAL = "file:///android_asset/www/index.html";
+    private boolean usingLocal = false;
     private WebView web;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
@@ -49,10 +56,20 @@ public class MainActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri u = request.getUrl();
-                if ("file".equals(u.getScheme())) return false;
+                if ("file".equals(u.getScheme()) || u.toString().startsWith(REMOTE)) return false;
                 // i link esterni si aprono nel browser
                 startActivity(new Intent(Intent.ACTION_VIEW, u));
                 return true;
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame()) useLocal(view);
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
+                if (request.isForMainFrame() && response.getStatusCode() >= 400) useLocal(view);
             }
         });
 
@@ -70,7 +87,13 @@ public class MainActivity extends Activity {
         });
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
-        else web.loadUrl("file:///android_asset/www/index.html");
+        else web.loadUrl(REMOTE);
+    }
+
+    private void useLocal(WebView view) {
+        if (usingLocal) return;
+        usingLocal = true;
+        view.loadUrl(LOCAL);
     }
 
     @Override

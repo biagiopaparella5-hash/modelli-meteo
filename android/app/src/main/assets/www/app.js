@@ -474,7 +474,7 @@
         <p>Le mappe vengono scaricate e disegnate automaticamente quattro volte al giorno, appena escono le nuove corse dei modelli. Apri l'app o premi “Aggiorna” per vedere l'ultima corsa.</p>
         <h3>Fonti dei dati</h3>
         <p>GFS: NOAA/NCEP · ECMWF: ECMWF Open Data, licenza CC BY 4.0 · ICON-EU: Deutscher Wetterdienst.<br>Previsioni per località: Open-Meteo.com (CC BY 4.0).</p>
-        <p class="muted small-txt">Modelli Meteo v1.1</p>
+        <p class="muted small-txt">Modelli Meteo v1.2</p>
       </div>`;
   }
   $("#btnReload").onclick = async () => { cache.clear(); await loadManifest(); renderInfo(); };

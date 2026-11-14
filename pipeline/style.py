@@ -68,8 +68,13 @@ def _new_map(area_id):
     if HAS_CARTOPY:
         lon0, lat0 = area["center"]
         if area_id == "nh":
-            ax = fig.add_axes(rect, projection=ccrs.NorthPolarStereo(central_longitude=lon0))
-            ax.set_extent(area["extent"], crs=PC)
+            proj = ccrs.NorthPolarStereo(central_longitude=lon0)
+            ax = fig.add_axes(rect, projection=proj)
+            # raggio del cerchio = distanza dal polo del parallelo più a sud (set_extent con -180/180 sbaglia)
+            x, y = proj.transform_point(lon0, area["extent"][2], PC)
+            r = float(np.hypot(x, y))
+            ax.set_xlim(-r, r)
+            ax.set_ylim(-r, r)
             theta = np.linspace(0, 2 * np.pi, 200)
             circle = mpath.Path(np.column_stack([np.sin(theta), np.cos(theta)]) * 0.5 + 0.5)
             ax.set_boundary(circle, transform=ax.transAxes)
