@@ -1,7 +1,7 @@
 """Configurazione della pipeline delle mappe."""
 
 # Regione scaricata (lat/lon): tutto l'emisfero nord
-REGION = dict(lat_min=14.0, lat_max=90.0, lon_min=-180.0, lon_max=180.0)
+REGION = dict(lat_min=-5.0, lat_max=90.0, lon_min=-180.0, lon_max=180.0)
 
 
 def _steps(last):

@@ -99,6 +99,23 @@ def _tr():
     return {"transform": PC} if HAS_CARTOPY else {}
 
 
+_REGIONS = {}
+
+
+def _regions(countries):
+    """Confini di regioni/stati solo per i paesi indicati."""
+    if countries not in _REGIONS:
+        import cartopy.io.shapereader as shpreader
+        path = shpreader.natural_earth("10m", "cultural", "admin_1_states_provinces_lines")
+        geoms = []
+        for rec in shpreader.Reader(path).records():
+            a = {k.lower(): v for k, v in rec.attributes.items()}
+            if a.get("adm0_a3") in countries:
+                geoms.append(rec.geometry)
+        _REGIONS[countries] = cfeature.ShapelyFeature(geoms, PC, facecolor="none")
+    return _REGIONS[countries]
+
+
 def _geo(ax, area_id):
     """Coste e confini ben visibili su qualsiasi colore: linea scura con alone chiaro."""
     if not HAS_CARTOPY:
@@ -107,7 +124,7 @@ def _geo(ax, area_id):
     coast = cfeature.COASTLINE.with_scale(scale)
     borders = cfeature.BORDERS.with_scale(scale)
     if area_id in ("it", "am"):
-        regions = cfeature.NaturalEarthFeature("cultural", "admin_1_states_provinces_lines", "10m", facecolor="none")
+        regions = _regions(("ITA",) if area_id == "it" else ("USA", "CAN", "MEX"))
         ax.add_feature(regions, edgecolor="#ffffff", linewidth=1.0, alpha=0.35, zorder=5)
         ax.add_feature(regions, edgecolor="#0b1220", linewidth=0.45, alpha=0.7, zorder=5.05)
     ax.add_feature(borders, edgecolor="#ffffff", linewidth=2.0, alpha=0.5, zorder=5.1)
@@ -136,7 +153,34 @@ def _crop(f, area_id):
     return f.lons[ix], f.lats[jy], f.data[np.ix_(jy, ix)]
 
 
+_POLAR_CACHE = {}
+
+
+def _polar(ax, lon, lat, data):
+    """Emisfero nord: ricampiona i dati su una griglia regolare nelle coordinate polari della mappa."""
+    r = ax.get_xlim()[1]
+    key = (round(r), float(lon[0]), float(lon[-1]), len(lon), float(lat[0]), float(lat[-1]), len(lat))
+    if key not in _POLAR_CACHE:
+        xs = np.linspace(-r, r, 520)
+        X, Y = np.meshgrid(xs, xs)
+        ll = PC.transform_points(ax.projection, X, Y)
+        lo, la = ll[..., 0], ll[..., 1]
+        ii = (lo - lon[0]) / (lon[1] - lon[0])
+        jj = (la - lat[0]) / (lat[1] - lat[0])
+        _POLAR_CACHE[key] = (X, Y, np.array([jj, ii]))
+    X, Y, coords = _POLAR_CACHE[key]
+    d = np.where(np.isnan(data), np.nanmean(data), data)
+    Z = ndimage.map_coordinates(d, coords, order=1, mode="nearest")
+    return X, Y, Z
+
+
+def _is_polar(ax):
+    return HAS_CARTOPY and isinstance(getattr(ax, "projection", None), ccrs.NorthPolarStereo)
+
+
 def _cf(ax, lon, lat, data, **kw):
+    if _is_polar(ax):
+        return ax.contourf(*_polar(ax, lon, lat, data), **kw)
     if HAS_CARTOPY:
         X, Y = np.meshgrid(lon, lat)
         return ax.contourf(X, Y, data, transform=PC, transform_first=True, **kw)
@@ -144,6 +188,8 @@ def _cf(ax, lon, lat, data, **kw):
 
 
 def _ct(ax, lon, lat, data, **kw):
+    if _is_polar(ax):
+        return ax.contour(*_polar(ax, lon, lat, data), **kw)
     if HAS_CARTOPY:
         X, Y = np.meshgrid(lon, lat)
         return ax.contour(X, Y, data, transform=PC, transform_first=True, **kw)

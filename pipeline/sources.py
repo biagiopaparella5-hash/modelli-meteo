@@ -137,7 +137,7 @@ def fetch_gfs(steps, workdir):
             "var_UGRD": "on", "var_VGRD": "on", "var_CAPE": "on",
             "lev_500_mb": "on", "lev_850_mb": "on", "lev_mean_sea_level": "on",
             "lev_surface": "on", "lev_2_m_above_ground": "on", "lev_10_m_above_ground": "on",
-            "subregion": "", "toplat": 90, "bottomlat": 13, "leftlon": 0, "rightlon": 360,
+            "subregion": "", "toplat": 90, "bottomlat": -6, "leftlon": 0, "rightlon": 360,
         }
         url = GFS_FILTER + "?" + "&".join(f"{k}={v}" for k, v in params.items())
         dest = os.path.join(workdir, f"gfs_{s:03d}.grb2")

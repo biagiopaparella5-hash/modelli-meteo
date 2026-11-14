@@ -72,7 +72,7 @@ def prewarm_cartopy():
 
 def synthetic(model, steps):
     """Campi finti ma realistici per provare la grafica senza rete."""
-    lats = np.arange(14, 90.01, 0.5, dtype=np.float32)
+    lats = np.arange(-5, 90.01, 0.5, dtype=np.float32)
     lons = np.arange(-180, 180, 0.5, dtype=np.float32)
     X, Y = np.meshgrid(lons, lats)
     out = {}
